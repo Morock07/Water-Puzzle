@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Water Puzzle Game</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #87CEEB, #5F9EA0);
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            color: white;
+        }
+        
+        h1 {
+            color: #ffffff;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+            margin-bottom: 10px;
+        }
+        
+        .game-info {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            max-width: 600px;
+            margin-bottom: 15px;
+        }
+        
+        .level-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .level-status {
+            padding: 4px 8px;
+            border-radius: 4px;
+            background-color: rgba(255, 255, 255, 0.2);
+            font-size: 14px;
+        }
+        
+        .level-status.completed {
+            background-color: #4ec46e;
+        }
+        
+        .game-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 15px;
+            max-width: 800px;
+            margin-bottom: 20px;
+        }
+        
+        .tube {
+            position: relative;
+            width: 50px;
+            height: 200px;  /* Height for 6 segments (6 * 33px) + small buffer */
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 10px 10px 25px 25px;
+            overflow: hidden;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+            cursor: pointer;
+            transition: transform 0.3s;
+        }
+        
+        .tube:hover {
+            transform: translateY(-5px);
+        }
+        
+        .tube.selected {
+            transform: translateY(-10px);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+            border: 2px solid #ffcc00;
+        }
+        
+        .segment {
+            position: absolute;
+            width: 100%;
+            height: 33px; /* Height of each segment */
+            bottom: 0;
+            transition: all 0.5s ease;
+            background-image: linear-gradient(135deg, rgba(255,255,255,0.3) 0%, rgba(255,255,255,0.1) 50%, rgba(0,0,0,0.2) 100%);
+        }
+        
+        .controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        
+        button {
+            background: linear-gradient(to bottom, #4da6ff, #2e86de);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 3px 6px rgba(0,0,0,0.2);
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+        }
+        
+        button:disabled {
+            background: linear-gradient(to bottom, #a0a0a0, #808080);
+            cursor: not-allowed;
+        }
+        
+        #undo-button {
+            background: linear-gradient(to bottom, #ff6b6b, #ee5253);
+        }
+        
+        #hint-button {
+            background: linear-gradient(to bottom, #f39c12, #e67e22);
+        }
+        
+        #prev-level {
+            background: linear-gradient(to bottom, #8395a7, #576574);
+        }
+        
+        #skip-level {
+            background: linear-gradient(to bottom, #9b59b6, #8e44ad);
+        }
+        
+        .level-complete {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: #ffffff;
+            z-index: 10;
+        }
+        
+        .tips {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            background-color: rgba(0,0,0,0.6);
+            color: #ffffff;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Water Puzzle</h1>
+    
+    <div class="game-info">
+        <div class="level-info">
+            Level: <span id="current-level">1</span>
+            <span id="level-status" class="level-status">In Progress</span>
+        </div>
+        <div>Moves: <span id="moves-count">0</span></div>
+        <div>Hints: <span id="hints-count">5</span></div>
+    </div>
+    
+    <div class="game-container" id="game-container"></div>
+    
+    <div class="controls">
+        <button id="undo-button" disabled>Undo</button>
+        <button id="reset-level">Reset Level</button>
+        <button id="hint-button">Hint</button>
+        <button id="prev-level" disabled>Previous Level</button>
+        <button id="skip-level">Skip Level</button>
+    </div>
+    
+    <div class="level-complete" id="level-complete">
+        <h2>Level Complete!</h2>
+        <button id="next-level">Next Level</button>
+    </div>
+
+    <div class="tips">
+        <div>Tip: Right-click to move all matching colors</div>
+        <div>Tip: Press CTRL + Z to undo</div>
+    </div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Game variables
+            let currentLevel = 1;
+            let totalTubes = 0;
+            let filledTubes = 0;
+            let emptyTubes = 2; // Start with 2 empty tubes
+            let tubes = [];
+            let selectedTube = null;
+            let moves = 0;
+            let hintsLeft = 5;
+            let ctrlKeyPressed = false;
+            let initialLevelState = null;
+            let moveHistory = [];
+            let completedLevels = {};
+            
+            // Constants
+            const SEGMENTS_PER_TUBE = 6; // Each tube can hold 6 pieces
+            const SEGMENT_HEIGHT = 33; // Height of each segment in pixels
+            const HINTS_PER_LEVEL = 5; // New constant: Each level gets 5 hints
+            
+            // Color palette - distinct aesthetic colors
+            const colorPalette = [
+                '#FF5252', // Red
+                '#448AFF', // Blue
+                '#66BB6A', // Green
+                '#AB47BC', // Purple
+                '#FFA726', // Orange
+                '#26C6DA', // Cyan
+                '#EC407A', // Pink
+                '#7E57C2', // Deep Purple
+                '#FFC107', // Amber
+                '#5C6BC0', // Indigo
+                '#26A69A', // Teal
+                '#FF7043', // Deep Orange
+                '#9CCC65', // Light Green
+                '#78909C', // Blue Gray
+                '#8D6E63', // Brown
+                '#29B6F6', // Light Blue
+                '#EF5350', // Light Red
+                '#FFEE58', // Yellow
+                '#42A5F5', // Blue
+                '#EC407A'  // Pink
+            ];
+            
+            // DOM elements
+            const gameContainer = document.getElementById('game-container');
+            const levelCounter = document.getElementById('current-level');
+            const levelStatus = document.getElementById('level-status');
+            const movesCounter = document.getElementById('moves-count');
+            const hintsCounter = document.getElementById('hints-count');
+            const resetButton = document.getElementById('reset-level');
+            const undoButton = document.getElementById('undo-button');
+            const hintButton = document.getElementById('hint-button');
+            const prevLevelButton = document.getElementById('prev-level');
+            const skipLevelButton = document.getElementById('skip-level');
+            const nextLevelButton = document.getElementById('next-level');
+            const levelCompleteModal = document.getElementById('level-complete');
+            
+            // Check for saved data
+            if (localStorage.getItem('waterPuzzleCompletedLevels')) {
+                completedLevels = JSON.parse(localStorage.getItem('waterPuzzleCompletedLevels'));
+            }
+            
+            if (localStorage.getItem('waterPuzzleCurrentLevel')) {
+                currentLevel = parseInt(localStorage.getItem('waterPuzzleCurrentLevel'));
+            }
+            
+            if (localStorage.getItem('waterPuzzleHintsLeft')) {
+                hintsLeft = parseInt(localStorage.getItem('waterPuzzleHintsLeft'));
+            }
+            
+            // Update hints counter
+            hintsCounter.textContent = hintsLeft;
+            
+            // Keyboard event listeners
+            document.addEventListener('keydown', function(event) {
+                if (event.key === 'Control') {
+                    ctrlKeyPressed = true;
+                }
+                
+                // Ctrl+Z for undo
+                if (ctrlKeyPressed && event.key === 'z') {
+                    if (!undoButton.disabled) {
+                        undoLastMove();
+                    }
+                    event.preventDefault();
+                }
+            });
+            
+            document.addEventListener('keyup', function(event) {
+                if (event.key === 'Control') {
+                    ctrlKeyPressed = false;
+                }
+            });
+            
+            // Seed random generator for consistent level generation
+            function seededRandom(seed) {
+                return function() {
+                    seed = (seed * 9301 + 49297) % 233280;
+                    return seed / 233280;
+                };
+            }
+            
+            // Initialize game
+            function initGame() {
+                levelCounter.textContent = currentLevel;
+                updatePrevLevelButton();
+                updateLevelStatus();
+                setupLevel();
+            }
+            
+            // Update level status display
+            function updateLevelStatus() {
+                if (completedLevels[currentLevel]) {
+                    levelStatus.textContent = "Completed";
+                    levelStatus.classList.add('completed');
+                } else {
+                    levelStatus.textContent = "In Progress";
+                    levelStatus.classList.remove('completed');
+                }
+            }
+            
+            // Set up the current level
+            function setupLevel() {
+                // Clear game container
+                gameContainer.innerHTML = '';
+                moves = 0;
+                selectedTube = null;
+                moveHistory = [];
+                updateMovesCounter();
+                updateUndoButton();
+                
+                // Reset hints for new level if not already at max
+                if (!localStorage.getItem('waterPuzzleHintsLeft') || 
+                    (localStorage.getItem('waterPuzzleCurrentLevel') && 
+                     parseInt(localStorage.getItem('waterPuzzleCurrentLevel')) !== currentLevel)) {
+                    hintsLeft = HINTS_PER_LEVEL;
+                    localStorage.setItem('waterPuzzleHintsLeft', hintsLeft);
+                    hintsCounter.textContent = hintsLeft;
+                }
+                
+                // Calculate level setup
+                // Start with 3 filled tubes and add 1 more every 5 levels
+                const levelGroup = Math.floor((currentLevel - 1) / 5);
+                filledTubes = 3 + levelGroup;
+                
+                // Calculate empty tubes - Add 1 extra empty tube for every 25 levels
+                const extraEmptyTubes = Math.floor((currentLevel - 1) / 25);
+                emptyTubes = 2 + extraEmptyTubes; 
+                
+                totalTubes = filledTubes + emptyTubes;
+                
+                // Create tubes
+                tubes = [];
+                for (let i = 0; i < totalTubes; i++) {
+                    const tube = createTube(i);
+                    gameContainer.appendChild(tube.element);
+                    tubes.push(tube);
+                }
+                
+                // Fill tubes with colored water
+                fillTubes();
+                
+                // Store initial state
+                initialLevelState = captureGameState();
+                
+                // Update hint button
+                updateHintButton();
+                
+                // Save current level to localStorage
+                localStorage.setItem('waterPuzzleCurrentLevel', currentLevel);
+            }
+            
+            // Create a tube element
+            function createTube(index) {
+                const tubeElement = document.createElement('div');
+                tubeElement.className = 'tube';
+                tubeElement.dataset.index = index;
+                
+                // Left click handler
+                tubeElement.addEventListener('click', function(event) {
+                    if (event.button !== 0) return; // Only handle left click
+                    handleTubeClick(index, false);
+                });
+                
+                // Right click handler for pouring all matching water
+                tubeElement.addEventListener('contextmenu', function(event) {
+                    event.preventDefault(); // Prevent context menu
+                    handleTubeClick(index, true);
+                    return false;
+                });
+                
+                return {
+                    element: tubeElement,
+                    segments: [],
+                    isFull: false,
+                    isComplete: false
+                };
+            }
+            
+            // Fill tubes with colored water segments
+            function fillTubes() {
+                // Select colors for this level
+                let colors = [];
+                const randomSeed = currentLevel * 1000;
+                const random = seededRandom(randomSeed);
+                
+                // Choose distinct colors (one for each filled tube)
+                for (let i = 0; i < filledTubes; i++) {
+                    colors.push(colorPalette[i % colorPalette.length]);
+                }
+                
+                // Create segments (6 of each color)
+                let allSegments = [];
+                colors.forEach(color => {
+                    for (let i = 0; i < SEGMENTS_PER_TUBE; i++) {
+                        allSegments.push(color);
+                    }
+                });
+                
+                // Shuffle segments
+                for (let i = allSegments.length - 1; i > 0; i--) {
+                    const j = Math.floor(random() * (i + 1));
+                    [allSegments[i], allSegments[j]] = [allSegments[j], allSegments[i]];
+                }
+                
+                // Distribute segments to tubes
+                for (let i = 0; i < filledTubes; i++) {
+                    for (let j = 0; j < SEGMENTS_PER_TUBE; j++) {
+                        if (allSegments.length > 0) {
+                            addSegmentToTube(tubes[i], allSegments.pop());
+                        }
+                    }
+                    checkTubeCompletion(tubes[i]);
+                }
+            }
+            
+            // Add a colored segment to a tube
+            function addSegmentToTube(tube, color) {
+                const segment = document.createElement('div');
+                segment.className = 'segment';
+                segment.style.backgroundColor = color;
+                segment.style.bottom = (tube.segments.length * SEGMENT_HEIGHT) + 'px';
+                
+                tube.element.appendChild(segment);
+                tube.segments.push({
+                    element: segment,
+                    color: color
+                });
+                
+                if (tube.segments.length >= SEGMENTS_PER_TUBE) {
+                    tube.isFull = true;
+                }
+            }
+            
+            // Handle tube click
+            function handleTubeClick(index, isRightClick) {
+                const tube = tubes[index];
+                
+                // If no tube is selected, select this one if it has segments
+                if (selectedTube === null) {
+                    if (tube.segments.length > 0) {
+                        selectedTube = index;
+                        tube.element.classList.add('selected');
+                    }
+                } 
+                // If this tube is already selected, deselect it
+                else if (selectedTube === index) {
+                    tube.element.classList.remove('selected');
+                    selectedTube = null;
+                } 
+                // Try to pour from selected tube to this one
+                else {
+                    const sourceTube = tubes[selectedTube];
+                    sourceTube.element.classList.remove('selected');
+                    
+                    if (isRightClick) {
+                        // Pour all matching segments
+                        const previousState = captureGameState();
+                        const movesMade = pourAllMatchingWater(sourceTube, tube);
+                        
+                        if (movesMade > 0) {
+                            moveHistory.push({
+                                state: previousState,
+                                moveCount: movesMade
+                            });
+                            moves += movesMade;
+                            updateMovesCounter();
+                            updateUndoButton();
+                        }
+                    } else if (canPour(sourceTube, tube)) {
+                        // Pour single segment
+                        const previousState = captureGameState();
+                        pourWater(sourceTube, tube);
+                        moves++;
+                        updateMovesCounter();
+                        
+                        moveHistory.push({
+                            state: previousState,
+                            moveCount: 1
+                        });
+                        updateUndoButton();
+                    }
+                    
+                    // Check if level is completed
+                    if (checkLevelComplete()) {
+                        completedLevels[currentLevel] = true;
+                        localStorage.setItem('waterPuzzleCompletedLevels', JSON.stringify(completedLevels));
+                        updateLevelStatus();
+                        showLevelComplete();
+                    }
+                    
+                    selectedTube = null;
+                }
+            }
+            
+            // Pour all matching segments of the same color
+            function pourAllMatchingWater(sourceTube, targetTube) {
+                if (sourceTube.segments.length === 0 || targetTube.segments.length >= SEGMENTS_PER_TUBE) {
+                    return 0;
+                }
+                
+                const sourceColor = sourceTube.segments[sourceTube.segments.length - 1].color;
+                let canPourAny = false;
+                
+                // Check if can pour into empty tube or matching color
+                if (targetTube.segments.length === 0 || 
+                    (targetTube.segments.length < SEGMENTS_PER_TUBE && targetTube.segments[targetTube.segments.length - 1].color === sourceColor)) {
+                    canPourAny = true;
+                }
+                
+                if (!canPourAny) return 0;
+                
+                // Count consecutive matching segments
+                let countToMove = 0;
+                for (let i = sourceTube.segments.length - 1; i >= 0; i--) {
+                    if (sourceTube.segments[i].color === sourceColor) {
+                        countToMove++;
+                    } else {
+                        break;
+                    }
+                }
+                
+                // Calculate how many can fit in target tube
+                const spaceInTarget = SEGMENTS_PER_TUBE - targetTube.segments.length;
+                countToMove = Math.min(countToMove, spaceInTarget);
+                
+                let movesMade = 0;
+                if (countToMove > 0) {
+                    // Pour the segments
+                    for (let i = 0; i < countToMove; i++) {
+                        if (canPour(sourceTube, targetTube)) {
+                            pourWater(sourceTube, targetTube);
+                            movesMade++;
+                        } else {
+                            break;
+                        }
+                    }
+                }
+                
+                return movesMade;
+            }
+            
+            // Check if water can be poured from source to target tube
+            function canPour(sourceTube, targetTube) {
+                // Can't pour if source is empty or target is full
+                if (sourceTube.segments.length === 0 || targetTube.segments.length >= SEGMENTS_PER_TUBE) {
+                    return false;
+                }
+                
+                // Can pour into empty tube
+                if (targetTube.segments.length === 0) {
+                    return true;
+                }
+                
+                // Can pour if top segments have same color
+                const sourceTopColor = sourceTube.segments[sourceTube.segments.length - 1].color;
+                const targetTopColor = targetTube.segments[targetTube.segments.length - 1].color;
+                
+                return sourceTopColor === targetTopColor;
+            }
+            
+            // Pour water from source to target tube
+            function pourWater(sourceTube, targetTube) {
+                if (sourceTube.segments.length === 0) return;
+                
+                const segment = sourceTube.segments.pop();
+                sourceTube.isFull = false;
+                
+                // Update visual position of all segments in source tube
+                for (let i = 0; i < sourceTube.segments.length; i++) {
+                    sourceTube.segments[i].element.style.bottom = (i * SEGMENT_HEIGHT) + 'px';
+                }
+                
+                // Remove segment from source tube
+                segment.element.remove();
+                
+                // Add segment to target tube
+                addSegmentToTube(targetTube, segment.color);
+                
+                // Check if tubes are complete
+                checkTubeCompletion(sourceTube);
+                checkTubeCompletion(targetTube);
+            }
+            
+            // Check if a tube is complete (all segments same color)
+            function checkTubeCompletion(tube) {
+                if (tube.segments.length === 0 || tube.segments.length < SEGMENTS_PER_TUBE) {
+                    tube.isComplete = false;
+                    return;
+                }
+                
+                const firstColor = tube.segments[0].color;
+                tube.isComplete = tube.segments.every(segment => segment.color === firstColor);
+                
+                if (tube.isComplete) {
+                    // Add completion effect
+                    tube.element.style.boxShadow = '0 0 15px rgba(255, 255, 255, 0.7), 0 0 30px ' + firstColor;
+                } else {
+                    tube.element.style.boxShadow = '';
+                }
+            }
+            
+            // Check if level is complete
+            function checkLevelComplete() {
+                for (let i = 0; i < tubes.length; i++) {
+                    if (tubes[i].segments.length > 0 && tubes[i].segments.length < SEGMENTS_PER_TUBE) {
+                        return false;
+                    }
+                    
+                    if (tubes[i].segments.length === SEGMENTS_PER_TUBE && !tubes[i].isComplete) {
+                        return false;
+                    }
+                }
+                
+                return true;
+            }
+            
+            // Capture the current game state
+            function captureGameState() {
+                const state = [];
+                
+                for (let i = 0; i < tubes.length; i++) {
+                    const tubeState = {
+                        segments: tubes[i].segments.map(segment => segment.color),
+                        isFull: tubes[i].isFull,
+                        isComplete: tubes[i].isComplete
+                    };
+                    state.push(tubeState);
+                }
+                
+                return state;
+            }
+            
+            // Restore a previous game state
+            function restoreGameState(state) {
+                // Clear current tubes
+                for (let i = 0; i < tubes.length; i++) {
+                    tubes[i].element.innerHTML = '';
+                    tubes[i].segments = [];
+                    tubes[i].isFull = false;
+                    tubes[i].isComplete = false;
+                }
+                
+                // Restore saved state
+                for (let i = 0; i < state.length; i++) {
+                    const tubeState = state[i];
+                    
+                    for (let j = 0; j < tubeState.segments.length; j++) {
+                        addSegmentToTube(tubes[i], tubeState.segments[j]);
+                    }
+                    
+                    tubes[i].isFull = tubeState.isFull;
+                    tubes[i].isComplete = tubeState.isComplete;
+                }
+            }
+            
+            // Undo the last move(s)
+            function undoLastMove() {
+                if (moveHistory.length === 0) return;
+                
+                const lastMove = moveHistory.pop();
+                restoreGameState(lastMove.state);
+                moves -= lastMove.moveCount;
+                updateMovesCounter();
+                updateUndoButton();
+                
+                // Deselect any selected tube
+                if (selectedTube !== null) {
+                    tubes[selectedTube].element.classList.remove('selected');
+                    selectedTube = null;
+                }
+            }
+            
+            // Reset the current level
+            function resetLevel() {
+                if (initialLevelState) {
+                    // Deselect any selected tube
+                    if (selectedTube !== null) {
+                        tubes[selectedTube].element.classList.remove('selected');
+                        selectedTube = null;
+                    }
+                    
+                    restoreGameState(initialLevelState);
+                    moves = 0;
+                    moveHistory = [];
+                    updateMovesCounter();
+                    updateUndoButton();
+                }
+            }
+            
+            // Go to previous level
+            function previousLevel() {
+                if (currentLevel > 1) {
+                    currentLevel--;
+                    levelCounter.textContent = currentLevel;
+                    updatePrevLevelButton();
+                    updateLevelStatus();
+                    setupLevel();
+                }
+            }
+            
+            // Skip to next level
+            function skipLevel() {
+                currentLevel++;
+                levelCounter.textContent = currentLevel;
+                updatePrevLevelButton();
+                updateLevelStatus();
+                setupLevel();
+                
+                // Hide level complete modal if visible
+                levelCompleteModal.style.display = 'none';
+            }
+            
+            // Show level complete modal
+            function showLevelComplete() {
+                levelCompleteModal.style.display = 'flex';
+            }
+            
+            // Update the Previous Level button state
+            function updatePrevLevelButton() {
+                prevLevelButton.disabled = currentLevel <= 1;
+            }
+            
+            // Update the moves counter display
+            function updateMovesCounter() {
+                movesCounter.textContent = moves;
+            }
+            
+            // Update the state of the undo button
+            function updateUndoButton() {
+                undoButton.disabled = moveHistory.length === 0;
+            }
+            
+            // Update hint button state
+            function updateHintButton() {
+                hintButton.disabled = hintsLeft <= 0;
+                hintsCounter.textContent = hintsLeft;
+            }
+            
+            // Provide a hint
+            function giveHint() {
+                if (hintsLeft <= 0) return;
+                
+                // Simple hint implementation: find a valid move
+                for (let i = 0; i < tubes.length; i++) {
+                    if (tubes[i].segments.length === 0) continue;
+                    
+                    for (let j = 0; j < tubes.length; j++) {
+                        if (i === j) continue;
+                        
+                        if (canPour(tubes[i], tubes[j])) {
+                            // Highlight the source and target tubes
+                            tubes[i].element.style.boxShadow = '0 0 15px #ffcc00';
+                            tubes[j].element.style.boxShadow = '0 0 15px #ffcc00';
+                            
+                            // Remove highlight after 2 seconds
+                            setTimeout(() => {
+                                tubes[i].element.style.boxShadow = '';
+                                tubes[j].element.style.boxShadow = '';
+                                checkTubeCompletion(tubes[i]);
+                                checkTubeCompletion(tubes[j]);
+                            }, 2000);
+                            
+                            // Decrease hint count
+                            hintsLeft--;
+                            updateHintButton();
+                            localStorage.setItem('waterPuzzleHintsLeft', hintsLeft);
+                            return;
+                        }
+                    }
+                }
+                
+                // No hint found, flash the screen
+                document.body.style.backgroundColor = '#ff000022';
+                setTimeout(() => {
+                    document.body.style.backgroundColor = '';
+                }, 300);
+            }
+            
+            // Event listeners
+            resetButton.addEventListener('click', resetLevel);
+            undoButton.addEventListener('click', undoLastMove);
+            hintButton.addEventListener('click', giveHint);
+            prevLevelButton.addEventListener('click', previousLevel);
+            skipLevelButton.addEventListener('click', skipLevel);
+            nextLevelButton.addEventListener('click', skipLevel);
+            
+            // Start game
+            initGame();
+        });
+    </script>
+</body>
+</html>
