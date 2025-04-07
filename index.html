@@ -93,6 +93,7 @@
             gap: 10px;
             flex-wrap: wrap;
             justify-content: center;
+            margin-bottom: 15px;
         }
         
         button {
@@ -156,6 +157,33 @@
             border-radius: 8px;
             font-size: 14px;
         }
+        
+        .prominent-tips {
+            background-color: rgba(0, 0, 0, 0.4);
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 20px;
+            max-width: 600px;
+            text-align: center;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+        }
+        
+        .prominent-tips p {
+            margin: 6px 0;
+            font-size: 15px;
+        }
+        
+        .tips-title {
+            font-weight: bold;
+            margin-bottom: 8px;
+            text-decoration: underline;
+        }
+        
+        .tip-icon {
+            font-size: 18px;
+            margin-right: 5px;
+            vertical-align: middle;
+        }
     </style>
 </head>
 <body>
@@ -180,14 +208,17 @@
         <button id="skip-level">Skip Level</button>
     </div>
     
+    <div class="prominent-tips">
+        <div class="tips-title">Pro Tips</div>
+        <p><span class="tip-icon">💻</span> PC: Right-click to move all matching colors at once</p>
+        <p><span class="tip-icon">📱</span> Android: Long press to move all matching colors</p>
+        <p><span class="tip-icon">⌨️</span> Press CTRL + Z to undo last move</p> 
+        <p><span class="tip-icon">🎮</span> Created by: Morock_Gamer</p>
+    </div>
+    
     <div class="level-complete" id="level-complete">
         <h2>Level Complete!</h2>
         <button id="next-level">Next Level</button>
-    </div>
-
-    <div class="tips">
-        <div>Tip: Right-click to move all matching colors</div>
-        <div>Tip: Press CTRL + Z to undo</div>
     </div>
     
     <script>
@@ -205,6 +236,8 @@
             let initialLevelState = null;
             let moveHistory = [];
             let completedLevels = {};
+            let longPressTimer = null;
+            let longPressDuration = 500; // ms for long press
             
             // Constants
             const SEGMENTS_PER_TUBE = 6; // Each tube can hold 6 pieces
@@ -373,6 +406,7 @@
                 // Left click handler
                 tubeElement.addEventListener('click', function(event) {
                     if (event.button !== 0) return; // Only handle left click
+                    clearTimeout(longPressTimer); // Clear any pending long press
                     handleTubeClick(index, false);
                 });
                 
@@ -381,6 +415,27 @@
                     event.preventDefault(); // Prevent context menu
                     handleTubeClick(index, true);
                     return false;
+                });
+                
+                // Touch events for mobile long press
+                tubeElement.addEventListener('touchstart', function(event) {
+                    longPressTimer = setTimeout(function() {
+                        // Long press detected - pour all matching
+                        handleTubeClick(index, true);
+                    }, longPressDuration);
+                });
+                
+                tubeElement.addEventListener('touchend', function(event) {
+                    // If timer hasn't triggered yet, handle as normal click
+                    if (longPressTimer) {
+                        clearTimeout(longPressTimer);
+                        handleTubeClick(index, false);
+                    }
+                });
+                
+                tubeElement.addEventListener('touchmove', function(event) {
+                    // Cancel long press if finger moves
+                    clearTimeout(longPressTimer);
                 });
                 
                 return {
@@ -447,7 +502,7 @@
             }
             
             // Handle tube click
-            function handleTubeClick(index, isRightClick) {
+            function handleTubeClick(index, isLongAction) {
                 const tube = tubes[index];
                 
                 // If no tube is selected, select this one if it has segments
@@ -467,7 +522,7 @@
                     const sourceTube = tubes[selectedTube];
                     sourceTube.element.classList.remove('selected');
                     
-                    if (isRightClick) {
+                    if (isLongAction) {
                         // Pour all matching segments
                         const previousState = captureGameState();
                         const movesMade = pourAllMatchingWater(sourceTube, tube);
